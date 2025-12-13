@@ -1,27 +1,31 @@
-import React from 'react';
-import './App.css';
-import { useWallet } from './context/WalletProvider';
+import React, { useState } from "react";
+import Login from "./components/Login";
+import Vault from "./components/Vault";
+import AddPassword from "./components/AddPassword";
 
-function App() {
-  const { isAuthenticated, connectWallet, disconnectWallet } = useWallet();
+export default function App() {
+  const [view, setView] = useState("LOCKED");
+  const [masterKey, setMasterKey] = useState(null);
+
+  const unlock = (key) => {
+    setMasterKey(key);
+    setView("VAULT");
+  };
+
+  const lock = () => {
+    setMasterKey(null);
+    setView("LOCKED");
+  };
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <h3>Nft Prize Locker</h3>
-        <button onClick={isAuthenticated ? disconnectWallet : connectWallet} id="wallet-connect">
-          {isAuthenticated ? "Disconnect Wallet" : "Connect Wallet"}
-        </button>
-      </header>
-      <div className="App-body">
-        <button>Mint</button>
-        <button>Sponsor</button>
-        <button>Acquire</button>
-        <button>Claim</button>
-        <button>Set Transferable Status</button>
-        <button>Manage</button>
-      </div>
-    </div>
+    <main style={{ width: "350px", height: "500px", background: "#111", padding: "16px", color: "#fff" }}>
+      {view === "LOCKED" && <Login onUnlock={unlock} />}
+
+      {view === "VAULT" && masterKey && (
+        <Vault masterKey={masterKey} onAdd={() => setView("ADD")} onLock={lock} />
+      )}
+
+      {view === "ADD" && masterKey && <AddPassword masterKey={masterKey} onBack={() => setView("VAULT")} />}
+    </main>
   );
 }
-
-export default App;

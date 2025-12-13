@@ -1,6 +1,6 @@
 {
-    "name": "Nft Prize Locker",
-    "description" : "An extension for nft lovers",
+    "name": "Guardium",
+    "description" : "Password manager",
     "version": "1.0",
     "manifest_version": 3,
     "action": {
