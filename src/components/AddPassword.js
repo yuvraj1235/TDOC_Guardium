@@ -1,86 +1,74 @@
 import React, { useState } from "react";
-import { loadVault, saveVault } from "../utils/CryptoService.js";
+import { encryptVault } from "../utils/CryptoService";
+import { saveVault } from "../utils/storage";
+import { writeVaultHash } from "../utils/web3Service";
 
-export default function AddPassword({ masterKey, onBack, refreshVault }) {
-  const [form, setForm] = useState({ site: "", username: "", password: "" });
-  const [saving, setSaving] = useState(false);
+export default function AddPassword({ vault, masterPassword, onUpdate }) {
+  const [open, setOpen] = useState(false);
+  const [site, setSite] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
 
   const handleSave = async () => {
-    if (!form.site.trim() || !form.password.trim()) {
-      return alert("Website and Password are required.");
+    if (!site || !password) {
+      alert("Site and password are required");
+      return;
     }
 
-    setSaving(true);
+    const updatedVault = {
+      ...vault,
+      accounts: [...vault.accounts, { site, username, password }]
+    };
 
-    try {
-      const currentVault = await loadVault(masterKey);
-      const newItem = {
-        id: Date.now(),
-        site: form.site.trim(),
-        username: form.username.trim(),
-        password: form.password.trim(),
-      };
+    const encrypted = await encryptVault(updatedVault, masterPassword);
+    await saveVault(encrypted);
+    await writeVaultHash(encrypted);
 
-      await saveVault([...currentVault, newItem], masterKey);
-
-      if (refreshVault) refreshVault(); // refresh the vault list
-      onBack();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to save. Try again.");
-    } finally {
-      setSaving(false);
-    }
+    onUpdate(updatedVault);
+    setOpen(false);
+    setSite("");
+    setUsername("");
+    setPassword("");
   };
 
-  return React.createElement(
-    "div",
-    { className: "h-full flex flex-col" },
-    React.createElement(
-      "div",
-      { className: "flex items-center mb-4 pb-2 border-b border-gray-700" },
-      React.createElement(
-        "button",
-        { onClick: onBack, className: "text-gray-400 mr-2" },
-        "←"
-      ),
-      React.createElement(
-        "h2",
-        { className: "text-lg font-bold text-white" },
-        "Add Password"
-      )
-    ),
-    React.createElement(
-      "div",
-      { className: "space-y-3" },
-      React.createElement("input", {
-        placeholder: "Website",
-        className: "w-full p-2 bg-gray-800 rounded text-white",
-        value: form.site,
-        onChange: (e) => setForm({ ...form, site: e.target.value }),
-      }),
-      React.createElement("input", {
-        placeholder: "Username",
-        className: "w-full p-2 bg-gray-800 rounded text-white",
-        value: form.username,
-        onChange: (e) => setForm({ ...form, username: e.target.value }),
-      }),
-      React.createElement("input", {
-        placeholder: "Password",
-        type: "password",
-        className: "w-full p-2 bg-gray-800 rounded text-white",
-        value: form.password,
-        onChange: (e) => setForm({ ...form, password: e.target.value }),
-      })
-    ),
-    React.createElement(
-      "button",
-      {
-        onClick: handleSave,
-        disabled: saving,
-        className: "w-full mt-4 bg-blue-600 p-2 rounded text-white font-bold disabled:opacity-50",
-      },
-      saving ? "Saving..." : "Save"
-    )
+  return (
+    <>
+      {!open && (
+        <button onClick={() => setOpen(true)}>
+          ➕ Add Password
+        </button>
+      )}
+
+      {open && (
+        <div style={{
+          marginTop: "10px",
+          padding: "10px",
+          border: "1px solid #ccc",
+          borderRadius: "6px"
+        }}>
+          <input
+            placeholder="Website"
+            value={site}
+            onChange={e => setSite(e.target.value)}
+          />
+          <input
+            placeholder="Username"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+          />
+
+          <div style={{ marginTop: "8px" }}>
+            <button onClick={handleSave}>Save</button>
+            <button onClick={() => setOpen(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

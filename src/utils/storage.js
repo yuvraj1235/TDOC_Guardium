@@ -1,28 +1,21 @@
-/*global chrome*/
+// utils/storage.js
 
-const storage = {
-    set: async (key, data) => {
-        if (localStorage) {
-            return localStorage.setItem(key, JSON.stringify(data))
-        } else {
-            chrome.storage.local.set({ [key]: JSON.stringify(data) }, () => {
-                return data;
-            });
-        }
-    },
-    get: async (key) => {
-        if (localStorage) {
-            const data = localStorage.getItem(key)
-            if (data) {
-                return JSON.parse(data)
-            }
-            return null;
-        } else {
-            chrome.storage.local.get([key], function (result) {
-                return result;
-            });
-        }
-    }
+export function saveVault(vault) {
+  return new Promise(resolve => {
+    chrome.storage.local.set({ vault }, resolve);
+  });
 }
 
-export default storage;
+export function loadVault() {
+  return new Promise(resolve => {
+    chrome.storage.local.get(["vault"], res => {
+      resolve(res.vault || null);
+    });
+  });
+}
+
+export function clearVault() {
+  return new Promise(resolve => {
+    chrome.storage.local.remove("vault", resolve);
+  });
+}

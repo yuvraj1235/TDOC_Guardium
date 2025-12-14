@@ -1,128 +1,87 @@
-import React, { useState, useEffect } from "react";
-import {
-  checkUserExists,
-  validateMasterPassword,
-  registerMasterPassword,
-} from "../utils/web3Service.js";
+import React from "react";
+
+import { useState, useEffect } from "react";
+import { loadVault, saveVault } from "../utils/storage";
+import { encryptVault, decryptVault } from "../utils/CryptoService";
+import { verifyVault, writeVaultHash } from "../utils/web3Service";
 
 export default function Login({ onUnlock }) {
   const [password, setPassword] = useState("");
-  const [isRegistering, setIsRegistering] = useState(false);
+  const [vaultExists, setVaultExists] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState("Connecting to MetaMask...");
 
-  // -----------------------------
-  // INITIAL CHECK
-  // -----------------------------
   useEffect(() => {
-    async function init() {
-      try {
-        const exists = await checkUserExists();
-
-        setIsRegistering(!exists);
-        setStatus(exists ? "Unlock your Vault" : "Create Master Password");
-      } catch (err) {
-        console.error(err);
-        setStatus("⚠ MetaMask not connected");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    init();
+    loadVault().then(v => {
+      setVaultExists(!!v);
+      setLoading(false);
+    });
   }, []);
 
-  // -----------------------------
-  // HANDLE LOGIN / REGISTER
-  // -----------------------------
-  const handleAuth = async () => {
-    if (!password || password.length < 8) {
-      alert("Master Password must be at least 8 characters.");
+  // --------------------------
+  // FIRST TIME SETUP
+  // --------------------------
+  const handleCreateVault = async () => {
+    if (!password) return alert("Master password required");
+
+    const emptyVault = { accounts: [] };
+
+    const encrypted = await encryptVault(emptyVault, password);
+    await saveVault(encrypted);
+
+    try {
+      await writeVaultHash(encrypted);
+    } catch (e) {
+      alert("Blockchain connection required for setup");
       return;
     }
 
-    setLoading(true);
+    onUnlock(emptyVault, password);
+  };
+
+  // --------------------------
+  // NORMAL LOGIN
+  // --------------------------
+  const handleUnlock = async () => {
+    const encryptedVault = await loadVault();
+    if (!encryptedVault) return;
+
+    // Blockchain verification (MANDATORY)
+    let verified = false;
+    try {
+      verified = await verifyVault(encryptedVault);
+    } catch {
+      alert("MetaMask / blockchain unavailable");
+      return;
+    }
+
+    if (!verified) {
+      alert("Vault verification failed");
+      return;
+    }
 
     try {
-      if (isRegistering) {
-        setStatus("Sign transaction in MetaMask...");
-        await registerMasterPassword(password);
-
-        setStatus("Registered ✓ Unlocking...");
-        onUnlock(password);
-        return;
-      }
-
-      // LOGIN MODE
-      setStatus("Verifying password...");
-      const valid = await validateMasterPassword(password);
-
-      if (!valid) {
-        alert("Incorrect Password");
-        return;
-      }
-
-      setStatus("Unlocking...");
-      onUnlock(password);
-    } catch (err) {
-      console.error(err);
-      alert(err.message || "Something went wrong.");
-    } finally {
-      setLoading(false);
-      setStatus(isRegistering ? "Create Master Password" : "Unlock your Vault");
+      const decrypted = await decryptVault(encryptedVault, password);
+      onUnlock(decrypted, password);
+    } catch {
+      alert("Wrong master password");
     }
   };
 
-  // -----------------------------
-  // UI
-  // -----------------------------
-  return React.createElement(
-    "div",
-    { className: "flex flex-col items-center justify-center h-full space-y-4" },
-    React.createElement(
-      "h1",
-      { className: "text-2xl font-bold text-blue-500" },
-      "Guardium"
-    ),
-    React.createElement(
-      "p",
-      { className: "text-gray-400 text-sm" },
-      status
-    ),
-    React.createElement("input", {
-      type: "password",
-      placeholder: "Master Password",
-      className: "w-full p-2 bg-gray-800 rounded text-white border border-gray-700",
-      value: password,
-      onChange: (e) => setPassword(e.target.value),
-      disabled: loading,
-    }),
-    React.createElement(
-      "button",
-      {
-        onClick: handleAuth,
-        disabled: loading,
-        className: "w-full bg-blue-600 p-2 rounded text-white font-bold hover:bg-blue-700 disabled:opacity-50",
-      },
-      loading
-        ? "Processing..."
-        : isRegistering
-        ? "Register Password"
-        : "Unlock Vault"
-    ),
-    !loading &&
-      React.createElement(
-        "button",
-        {
-          onClick: () => {
-            setIsRegistering((prev) => !prev);
-            setStatus(!isRegistering ? "Unlock your Vault" : "Create Master Password");
-          },
-          className: "text-xs text-gray-400 hover:text-blue-400",
-        },
-        isRegistering
-          ? "Already registered? Unlock instead"
-          : "New user? Register Master Password"
-      )
+  if (loading) return <p>Loading…</p>;
+
+  return (
+    <div>
+      <h2>{vaultExists ? "Unlock Vault" : "Create Vault"}</h2>
+
+      <input
+        type="password"
+        placeholder="Master Password"
+        onChange={e => setPassword(e.target.value)}
+      />
+
+      <button onClick={vaultExists ? handleUnlock : handleCreateVault}>
+        {vaultExists ? "Unlock" : "Create Vault"}
+      </button>
+    </div>
   );
 }
