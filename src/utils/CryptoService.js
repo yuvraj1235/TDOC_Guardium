@@ -1,57 +1,44 @@
-// utils/CryptoService.js
+import CryptoJS from "../vendor/crypto-js.js";
+import { ethers } from "ethers";
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+/**
+ * Derive a vault encryption key from MetaMask signature
+ */
+export function deriveKeyFromSignature(signature) {
+  if (!signature || typeof signature !== "string") {
+    throw new Error("INVALID_SIGNATURE");
+  }
 
-export async function deriveKey(password, salt) {
-  const baseKey = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveKey"]
-  );
-
-  return crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt,
-      iterations: 200000,
-      hash: "SHA-256",
-    },
-    baseKey,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"]
-  );
+  // Signature is already hex → hash it to get fixed-length key
+  return ethers.utils.keccak256(signature);
 }
 
-export async function encryptVault(data, password) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveKey(password, salt);
-
-  const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    encoder.encode(JSON.stringify(data))
-  );
+/**
+ * Encrypt vault using derived key
+ */
+export async function encryptVaultWithKey(vault, key) {
+  const json = JSON.stringify(vault);
+  const encrypted = CryptoJS.AES.encrypt(json, key).toString();
 
   return {
-    ciphertext: btoa(String.fromCharCode(...new Uint8Array(encrypted))),
-    iv: Array.from(iv),
-    salt: Array.from(salt),
+    ciphertext: encrypted,
+    version: 1,
   };
 }
 
-export async function decryptVault(vault, password) {
-  const key = await deriveKey(password, new Uint8Array(vault.salt));
+/**
+ * Decrypt vault using derived key
+ */
+export async function decryptVaultWithKey(encryptedVault, key) {
+  try {
+    const bytes = CryptoJS.AES.decrypt(encryptedVault.ciphertext, key);
+    const decrypted = bytes.toString(CryptoJS.enc.Utf8);
 
-  const decrypted = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: new Uint8Array(vault.iv) },
-    key,
-    Uint8Array.from(atob(vault.ciphertext), c => c.charCodeAt(0))
-  );
+    if (!decrypted) throw new Error("DECRYPT_FAILED");
 
-  return JSON.parse(decoder.decode(decrypted));
+    return JSON.parse(decrypted);
+  } catch (err) {
+    console.error("Vault decryption failed:", err);
+    throw new Error("INVALID_WALLET_OR_SIGNATURE");
+  }
 }

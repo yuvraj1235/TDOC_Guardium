@@ -60,4 +60,5 @@ contract VaultRegistry {
     ) external view returns (bool) {
         return vaultHashes[user] == localHash;
     }
+    
 }

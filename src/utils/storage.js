@@ -1,18 +1,18 @@
 // utils/storage.js
 
-export function saveVault(vault) {
-  return new Promise(resolve => {
-    chrome.storage.local.set({ vault }, resolve);
+const STORAGE_KEY = "guardium_vault_data";
+
+export async function saveVault(encryptedVault) {
+  await chrome.storage.local.set({
+    [STORAGE_KEY]: encryptedVault,
   });
 }
 
-export function loadVault() {
-  return new Promise(resolve => {
-    chrome.storage.local.get(["vault"], res => {
-      resolve(res.vault || null);
-    });
-  });
+export async function loadVault() {
+  const result = await chrome.storage.local.get(STORAGE_KEY);
+  return result[STORAGE_KEY] || null;
 }
+
 
 export function clearVault() {
   return new Promise(resolve => {

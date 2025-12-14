@@ -1,13 +1,26 @@
 import React, { useState, useEffect } from "react";
 import { loadVault, saveVault } from "../utils/storage";
-import { encryptVault, decryptVault } from "../utils/CryptoService";
+import {
+  encryptVaultWithKey,
+  decryptVaultWithKey,
+  deriveKeyFromSignature,
+} from "../utils/CryptoService";
 import { verifyVault, writeVaultHash } from "../utils/web3Service";
+import { useWallet } from "../context/WalletProvider";
+
+
 
 export default function Login({ onUnlock }) {
-  const [password, setPassword] = useState("");
   const [vaultExists, setVaultExists] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
 
+  const { signUnlockMessage, isConnected, connectWallet } = useWallet();
+const ensureWalletConnected = async () => {
+  if (!isConnected) {
+    await connectWallet();
+  }
+};
   useEffect(() => {
     loadVault().then(v => {
       setVaultExists(!!v);
@@ -15,35 +28,82 @@ export default function Login({ onUnlock }) {
     });
   }, []);
 
-  const handleCreateVault = async () => {
-    if (!password) return alert("Master password required");
+  const ensureWallet = async () => {
+    if (!isConnected) {
+      await connectWallet();
+    }
+  };
+
+  // --------------------------
+  // CREATE VAULT
+  // --------------------------
+const handleCreateVault = async () => {
+  try {
+    setBusy(true);
+
+    console.log("1️⃣ Requesting signature");
+    const signature = await signUnlockMessage();
+    console.log("✅ Signature received:", signature);
+
+    console.log("2️⃣ Deriving key");
+    const key = deriveKeyFromSignature(signature);
+    console.log("✅ Key derived:", key);
 
     const emptyVault = { accounts: [] };
-    const encrypted = await encryptVault(emptyVault, password);
 
+    console.log("3️⃣ Encrypting vault");
+    const encrypted = await encryptVaultWithKey(emptyVault, key);
+    console.log("✅ Vault encrypted");
+
+    console.log("4️⃣ Saving vault locally");
     await saveVault(encrypted);
+
+    console.log("5️⃣ Writing hash to blockchain");
     await writeVaultHash(encrypted);
 
-    onUnlock(emptyVault, password);
-  };
+    console.log("🎉 DONE");
+    onUnlock(emptyVault);
 
-  const handleUnlock = async () => {
+  } catch (err) {
+    console.error(err);
+    
+  } finally {
+    setBusy(false);
+  }
+};
+
+
+  // --------------------------
+  // UNLOCK VAULT
+  // --------------------------
+ const handleUnlock = async () => {
+  try {
+    setBusy(true);
+
+    await chrome.storage.local.set({
+      vault_unlock_pending: true,
+    });
+
+    const signature = await signUnlockMessage();
+    const key = deriveKeyFromSignature(signature);
+
     const encryptedVault = await loadVault();
-    if (!encryptedVault) return;
+    const decrypted = await decryptVaultWithKey(encryptedVault, key);
 
-    const verified = await verifyVault(encryptedVault);
-    if (!verified) {
-      alert("Vault verification failed");
-      return;
-    }
+    await chrome.storage.local.set({
+      vault_unlocked: true,
+      vault_unlock_pending: false,
+    });
 
-    try {
-      const decrypted = await decryptVault(encryptedVault, password);
-      onUnlock(decrypted, password);
-    } catch {
-      alert("Wrong master password");
-    }
-  };
+    onUnlock(decrypted);
+  } catch (err) {
+    await chrome.storage.local.remove("vault_unlock_pending");
+    alert("Unlock failed");
+  } finally {
+    setBusy(false);
+  }
+};
+
 
   if (loading) return <p>Loading…</p>;
 
@@ -51,24 +111,22 @@ export default function Login({ onUnlock }) {
     <div className="card">
       <h3>{vaultExists ? "Unlock Vault" : "Create Vault"}</h3>
 
-      <input
-        type="password"
-        placeholder="Master Password"
-        value={password}
-        onChange={e => setPassword(e.target.value)}
-      />
-
       <p className="hint">
         {vaultExists
-          ? "Blockchain will verify vault integrity before unlocking."
-          : "Creating a vault registers its fingerprint on the blockchain."}
+          ? "Unlock the vault using your MetaMask wallet."
+          : "Create a vault secured by your MetaMask identity. This will register it on the blockchain."}
       </p>
 
       <button
         className="primary"
+        disabled={busy}
         onClick={vaultExists ? handleUnlock : handleCreateVault}
       >
-        {vaultExists ? "Unlock Vault" : "Create & Register Vault"}
+        {busy
+          ? "Waiting for MetaMask…"
+          : vaultExists
+          ? "🔓 Unlock with MetaMask"
+          : "🔐 Create & Register with MetaMask"}
       </button>
     </div>
   );
