@@ -1,6 +1,4 @@
-import React from "react";
-
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { loadVault, saveVault } from "../utils/storage";
 import { encryptVault, decryptVault } from "../utils/CryptoService";
 import { verifyVault, writeVaultHash } from "../utils/web3Service";
@@ -17,43 +15,23 @@ export default function Login({ onUnlock }) {
     });
   }, []);
 
-  // --------------------------
-  // FIRST TIME SETUP
-  // --------------------------
   const handleCreateVault = async () => {
     if (!password) return alert("Master password required");
 
     const emptyVault = { accounts: [] };
-
     const encrypted = await encryptVault(emptyVault, password);
-    await saveVault(encrypted);
 
-    try {
-      await writeVaultHash(encrypted);
-    } catch (e) {
-      alert("Blockchain connection required for setup");
-      return;
-    }
+    await saveVault(encrypted);
+    await writeVaultHash(encrypted);
 
     onUnlock(emptyVault, password);
   };
 
-  // --------------------------
-  // NORMAL LOGIN
-  // --------------------------
   const handleUnlock = async () => {
     const encryptedVault = await loadVault();
     if (!encryptedVault) return;
 
-    // Blockchain verification (MANDATORY)
-    let verified = false;
-    try {
-      verified = await verifyVault(encryptedVault);
-    } catch {
-      alert("MetaMask / blockchain unavailable");
-      return;
-    }
-
+    const verified = await verifyVault(encryptedVault);
     if (!verified) {
       alert("Vault verification failed");
       return;
@@ -70,17 +48,27 @@ export default function Login({ onUnlock }) {
   if (loading) return <p>Loading…</p>;
 
   return (
-    <div>
-      <h2>{vaultExists ? "Unlock Vault" : "Create Vault"}</h2>
+    <div className="card">
+      <h3>{vaultExists ? "Unlock Vault" : "Create Vault"}</h3>
 
       <input
         type="password"
         placeholder="Master Password"
+        value={password}
         onChange={e => setPassword(e.target.value)}
       />
 
-      <button onClick={vaultExists ? handleUnlock : handleCreateVault}>
-        {vaultExists ? "Unlock" : "Create Vault"}
+      <p className="hint">
+        {vaultExists
+          ? "Blockchain will verify vault integrity before unlocking."
+          : "Creating a vault registers its fingerprint on the blockchain."}
+      </p>
+
+      <button
+        className="primary"
+        onClick={vaultExists ? handleUnlock : handleCreateVault}
+      >
+        {vaultExists ? "Unlock Vault" : "Create & Register Vault"}
       </button>
     </div>
   );

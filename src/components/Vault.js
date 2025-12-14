@@ -2,16 +2,16 @@ import React from "react";
 
 export default function Vault({ vault }) {
   return (
-    <div style={{ maxHeight: "260px", overflowY: "auto" }}>
-      <h3>Saved Passwords</h3>
+    <div className="vault-list">
+      <h4>Saved Passwords</h4>
 
       {vault.accounts.length === 0 && (
-        <p>No passwords yet</p>
+        <p className="hint">No passwords yet</p>
       )}
 
       {vault.accounts.map((a, i) => (
-        <div key={i} style={{ marginBottom: "8px" }}>
-          <strong>{a.site}</strong><br />
+        <div key={i} className="vault-item">
+          <strong>{a.site}</strong>
           <small>{a.username}</small>
         </div>
       ))}

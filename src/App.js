@@ -1,33 +1,37 @@
-
-import React from "react";
-import { useState } from "react";
+import React, { useState } from "react";
+import Header from "./components/Header";
 import Login from "./components/Login";
 import Vault from "./components/Vault";
 import AddPassword from "./components/AddPassword";
+import "./App.css";
 
 export default function App() {
   const [vault, setVault] = useState(null);
   const [masterPassword, setMasterPassword] = useState(null);
 
-  if (!vault) {
-    return (
-      <Login
-        onUnlock={(v, m) => {
-          setVault(v);
-          setMasterPassword(m);
-        }}
-      />
-    );
-  }
-
   return (
     <>
-      <Vault vault={vault} />
-      <AddPassword
-        vault={vault}
-        masterPassword={masterPassword}
-        onUpdate={setVault}
-      />
+      <Header />
+
+      <div className="content">
+        {!vault ? (
+          <Login
+            onUnlock={(v, m) => {
+              setVault(v);
+              setMasterPassword(m);
+            }}
+          />
+        ) : (
+          <>
+            <Vault vault={vault} />
+            <AddPassword
+              vault={vault}
+              masterPassword={masterPassword}
+              onUpdate={setVault}
+            />
+          </>
+        )}
+      </div>
     </>
   );
 }

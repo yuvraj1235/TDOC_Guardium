@@ -9,64 +9,36 @@ export default function AddPassword({ vault, masterPassword, onUpdate }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleSave = async () => {
-    if (!site || !password) {
-      alert("Site and password are required");
-      return;
-    }
-
-    const updatedVault = {
+  const save = async () => {
+    const updated = {
       ...vault,
       accounts: [...vault.accounts, { site, username, password }]
     };
 
-    const encrypted = await encryptVault(updatedVault, masterPassword);
+    const encrypted = await encryptVault(updated, masterPassword);
     await saveVault(encrypted);
     await writeVaultHash(encrypted);
 
-    onUpdate(updatedVault);
+    onUpdate(updated);
     setOpen(false);
-    setSite("");
-    setUsername("");
-    setPassword("");
   };
 
   return (
     <>
       {!open && (
-        <button onClick={() => setOpen(true)}>
+        <button className="secondary" onClick={() => setOpen(true)}>
           ➕ Add Password
         </button>
       )}
 
       {open && (
-        <div style={{
-          marginTop: "10px",
-          padding: "10px",
-          border: "1px solid #ccc",
-          borderRadius: "6px"
-        }}>
-          <input
-            placeholder="Website"
-            value={site}
-            onChange={e => setSite(e.target.value)}
-          />
-          <input
-            placeholder="Username"
-            value={username}
-            onChange={e => setUsername(e.target.value)}
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-          />
+        <div className="card">
+          <input placeholder="Website" onChange={e => setSite(e.target.value)} />
+          <input placeholder="Username" onChange={e => setUsername(e.target.value)} />
+          <input type="password" placeholder="Password" onChange={e => setPassword(e.target.value)} />
 
-          <div style={{ marginTop: "8px" }}>
-            <button onClick={handleSave}>Save</button>
-            <button onClick={() => setOpen(false)}>Cancel</button>
-          </div>
+          <button className="primary" onClick={save}>Save</button>
+          <button className="ghost" onClick={() => setOpen(false)}>Cancel</button>
         </div>
       )}
     </>
