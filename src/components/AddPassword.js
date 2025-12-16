@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { encryptVault } from "../utils/CryptoService";
 import { saveVault } from "../utils/storage";
 import { writeVaultHash } from "../utils/web3Service";
 import Toast from './Toast';
+import { getCurrentDomain } from "../utils/Tabs";
 
 export default function AddPassword({ vault, masterPassword, onUpdate }) {
   const [open, setOpen] = useState(false);
@@ -12,7 +13,10 @@ export default function AddPassword({ vault, masterPassword, onUpdate }) {
   const [saving, setSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
-
+  useEffect(() => {
+    getCurrentDomain().then(setSite);
+  }, [])
+  
   const showToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(""), 3000);
