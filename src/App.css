@@ -8,12 +8,12 @@ body {
 }
 
 .content {
-  padding: 12px;
+  padding: 0px;
 }
 
 .card {
   background: #fafafa;
-  padding: 12px;
+  padding: 0px;
   border-radius: 8px;
   margin-bottom: 12px;
 }
@@ -22,7 +22,7 @@ body {
   width: 100%;
   background: #4f46e5;
   color: white;
-  padding: 8px;
+  padding: 0px;
   border-radius: 6px;
 }
 

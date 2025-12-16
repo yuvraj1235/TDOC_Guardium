@@ -1,17 +1,4 @@
 body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
-body {
   font-family: system-ui, sans-serif;
 }
 
@@ -21,12 +8,12 @@ body {
 }
 
 .content {
-  padding: 12px;
+  padding: 0px;
 }
 
 .card {
   background: #fafafa;
-  padding: 12px;
+  padding: 0px;
   border-radius: 8px;
   margin-bottom: 12px;
 }
@@ -35,7 +22,7 @@ body {
   width: 100%;
   background: #4f46e5;
   color: white;
-  padding: 8px;
+  padding: 0px;
   border-radius: 6px;
 }
 
