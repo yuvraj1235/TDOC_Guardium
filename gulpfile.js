@@ -31,14 +31,33 @@ gulp.task('build', function (done) {
 
   done();
 });
+// gulp.task('copy-background', function (done) {
+//   gulp.src('./background.js')
+//     .pipe(gulp.dest(config.root));
 
-gulp.task('copy-manifest', function (done) {
-  gulp.src('./manifest.json')
-    .pipe(gulp.dest(config.root));
+//   done()
+// });
 
-  done()
+gulp.task('copy-manifest', function () {
+  return gulp.src(
+    [
+      './manifest.json',
+      './popup.html',
+      './background.js',
+      './contentScript.js',
+      './logo192.png'
+    ],
+    { allowEmpty: true }
+  )
+  .pipe(gulp.dest(config.root));
 });
 
+// gulp.task('copy-contentScript', function (done) {
+//   gulp.src('./contentScript.js')
+//     .pipe(gulp.dest(config.root));
+
+//   done()
+// });
 gulp.task('connect', function (done) {
   connect.server({
     name: 'Nft Prize Locker',

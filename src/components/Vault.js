@@ -1,365 +1,318 @@
 import React, { useEffect, useState } from "react";
-import { getCurrentDomain } from "../utils/Tabs";
+import { encryptVault } from "../utils/CryptoService";
+import { writeVaultHash } from "../utils/web3Service"; // Ensure this imports correctly
 import Toast from './Toast';
+import { getCurrentDomain } from "../utils/Tabs";
 
-export default function Vault({ vault }) {
-  const [domain, setDomain] = useState(null);
+export default function Vault({ vault, masterKey, onUpdate }) {
+  const [domain, setDomain] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [toastMessage, setToastMessage] = useState("");
-  const [toastType, setToastType] = useState("error"); // Add toast type state
-
-  const showToast = (msg, type = "info") => { // Accept type parameter, default to "info"
-    setToastMessage(msg);
-    setToastType(type);
-    setTimeout(() => setToastMessage(""), 3000);
+  const [pendingData, setPendingData] = useState(null); 
+  const [localAccounts, setLocalAccounts] = useState([]);
+  const [isSaving, setIsSaving] = useState(false); // New state to track saving progress
+// 1. Initialize Accounts & Sync to Session
+  useEffect(() => {
+    const initialAccounts = Array.isArray(vault) ? vault : (vault?.accounts || []);
+    setLocalAccounts(initialAccounts);
+    
+    // ✅ FIX: Push unlocked vault to Session Storage so Background Script can see it!
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.session) {
+      chrome.storage.session.set({ unlockedVault: initialAccounts });
+      console.log("Vault synced to background session.");
+    }
+  }, [vault]);
+  // Toast State
+  const [toast, setToast] = useState({ msg: "", type: "" });
+  const showToast = (msg, type = "info") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast({ msg: "", type: "" }), 3000);
   };
 
+  // 1. Initialize Accounts from Props
   useEffect(() => {
-    getCurrentDomain().then(setDomain);
+    const initialAccounts = Array.isArray(vault) ? vault : (vault?.accounts || []);
+    setLocalAccounts(initialAccounts);
+  }, [vault]);
+
+  // 2. Load Domain & Check for Pending Logins
+  useEffect(() => {
+    getCurrentDomain().then(d => setDomain(d || ""));
+
+    if (typeof chrome !== "undefined" && chrome.storage) {
+      chrome.storage.local.get("pendingLogin", (result) => {
+        if (result.pendingLogin) {
+          console.log("✅ Pending Login Found:", result.pendingLogin);
+          setPendingData(result.pendingLogin);
+        }
+      });
+    }
   }, []);
 
-  const matches = vault.accounts.filter(a =>
-    domain && domain.includes(a.site)
-  );
+  // 🔒 THE FIXED SAVE FUNCTION (Integrity + Storage)
+  const handleSave = async () => {
+    if (!pendingData) return;
+    
+    setIsSaving(true);
+    showToast("Encrypting...", "info");
+
+    try {
+      // A. Prepare New Data Structure
+      const newItem = {
+        id: Date.now().toString(),
+        site: pendingData.site,
+        username: pendingData.username,
+        password: pendingData.password
+      };
+
+      // Construct the full vault object (assuming standard structure)
+      const updatedAccounts = [...localAccounts, newItem];
+      const fullVaultData = { ...vault, accounts: updatedAccounts };
+
+      // B. Encrypt
+      // Note: We use the full object structure for encryption to match your other files
+      const encrypted = await encryptVault(fullVaultData, masterKey);
+
+      // C. Save to Local Storage (Browser)
+      if (typeof chrome !== "undefined" && chrome.storage) {
+        await chrome.storage.local.set({ vault: encrypted });
+        // Update session so autofill works immediately without unlock
+        await chrome.storage.session.set({ unlockedVault: updatedAccounts });
+      }
+
+      // D. 🛡️ Save to Blockchain (Integrity)
+      showToast("Syncing to Blockchain...", "info");
+      await writeVaultHash(encrypted);
+
+      // E. Update UI & Cleanup
+      setLocalAccounts(updatedAccounts);
+      if (onUpdate) onUpdate(fullVaultData);
+      
+      showToast("Saved & Verified on Chain!", "success");
+      
+      // Remove from queue
+      setPendingData(null);
+      chrome.storage.local.remove("pendingLogin");
+      chrome.action.setBadgeText({ text: "" });
+
+    } catch (err) {
+      console.error("Save Error:", err);
+      showToast("Failed to save. See console.", "error");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDiscard = () => {
+    setPendingData(null);
+    if (typeof chrome !== "undefined") {
+      chrome.storage.local.remove("pendingLogin");
+      chrome.action.setBadgeText({ text: "" });
+    }
+  };
+
+  // --- FILTERING & ACTIONS ---
+  
+  const visibleAccounts = localAccounts.filter(account => {
+    const searchLower = searchQuery.toLowerCase();
+    if (searchQuery) {
+      return (
+        account.site.toLowerCase().includes(searchLower) ||
+        (account.username && account.username.toLowerCase().includes(searchLower))
+      );
+    }
+    if (!domain) return true;
+    return domain.toLowerCase().includes(account.site.toLowerCase()) || 
+           account.site.toLowerCase().includes(domain.toLowerCase());
+  });
 
   const autofill = (username, password, site) => {
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-      if (!tabs[0]?.id) return;
+      if (!tabs[0]?.id || tabs[0].url?.startsWith("chrome://")) return;
+
       chrome.tabs.sendMessage(
         tabs[0].id,
-        {
-          type: "FILL_CREDENTIALS",
-          username,
-          password,
-        },
-        response => {
-          if (!response?.filled) {
-            showToast("No login fields detected on this page", "warning");
-          } else {
-            showToast(`Credentials filled for ${site}`, "success");
-          }
+        { type: "FILL_CREDENTIALS", credentials: { username, password } },
+        (response) => {
+          if (chrome.runtime.lastError) return;
+          if (!response?.filled) showToast("No login fields found", "warning");
+          else showToast(`Filled ${site}`, "success");
         }
       );
     });
   };
 
-  const handleCopyUsername = (username, site) => {
-    navigator.clipboard.writeText(username);
-    showToast(`Username copied!`, "success");
+  const handleCopy = (text, type) => {
+    navigator.clipboard.writeText(text);
+    showToast(`${type} copied!`, "success");
   };
-
-  const handleCopyPassword = (password, site) => {
-    navigator.clipboard.writeText(password);
-    showToast(`Password copied!`, "success");
-  };
-
-  const filteredMatches = matches.filter(item => 
-    item.site.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (item.username && item.username.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
 
   return (
     <div style={styles.container}>
       <style>{keyframes}</style>
-      
-      <div style={styles.bgEffects}>
-        <div style={styles.colorBlur}></div>
-      </div>
+      <div style={styles.bgEffects}><div style={styles.colorBlur}></div></div>
 
       <div style={styles.content}>
         <h1 style={styles.title}>Your Vault</h1>
-        <p style={styles.status}>
-          {matches.length === 0 
-            ? "No passwords for this site yet" 
-            : `${matches.length} password${matches.length !== 1 ? 's' : ''} for ${domain || "this site"}`
-          }
-        </p>
 
-        {matches.length > 0 && (
-          <div style={styles.searchWrapper}>
-            <input
-              type="text"
-              placeholder="search passwords..."
-              style={styles.searchInput}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery("")} style={styles.clearButton}>
-                ×
+        {/* 🔔 PENDING SAVE CARD */}
+        {pendingData && (
+          <div style={styles.pendingCard}>
+            <div style={styles.pendingHeader}>
+              <span style={styles.pendingIcon}>🔔</span>
+              <div>
+                <p style={styles.pendingTitle}>New Login Detected</p>
+                <p style={styles.pendingSite}>{pendingData.site}</p>
+              </div>
+            </div>
+            <div style={styles.pendingActions}>
+              <button 
+                onClick={handleDiscard} 
+                style={styles.discardButton}
+                disabled={isSaving}
+              >
+                Discard
               </button>
-            )}
+              <button 
+                onClick={handleSave} 
+                style={{...styles.saveButton, opacity: isSaving ? 0.7 : 1}}
+                disabled={isSaving}
+              >
+                {isSaving ? "Syncing..." : "Save to Vault"}
+              </button>
+            </div>
           </div>
         )}
 
-        <div style={styles.vaultList}>
-          {filteredMatches.length === 0 && searchQuery && (
-            <p style={styles.emptyMessage}>No matches found</p>
+        {/* STATUS & SEARCH */}
+        <p style={styles.status}>
+          {visibleAccounts.length > 0 
+            ? `${visibleAccounts.length} login${visibleAccounts.length !== 1 ? 's' : ''} found`
+            : "No logins found"}
+        </p>
+
+        <div style={styles.searchWrapper}>
+          <input
+            type="text"
+            placeholder="Search vault..."
+            style={styles.searchInput}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery("")} style={styles.clearButton}>×</button>
           )}
-          
-          {filteredMatches.map((account, index) => (
+        </div>
+
+        {/* LIST */}
+        <div style={styles.vaultList}>
+          {visibleAccounts.map((account, index) => (
             <div key={index} style={styles.vaultItem}>
               <div style={styles.itemTop}>
                 <div style={styles.siteInfo}>
                   <p style={styles.siteName}>{account.site}</p>
-                  {account.username && (
-                    <p style={styles.username}>{account.username}</p>
-                  )}
+                  <p style={styles.username}>{account.username}</p>
                 </div>
               </div>
-
               <div style={styles.actionButtons}>
-                <button
-                  onClick={() => handleCopyUsername(account.username, account.site)}
-                  style={styles.actionButton}
-                  title="Copy Username"
-                >
-                  <svg style={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  <span style={styles.buttonLabel}>username</span>
-                </button>
-
-                <button
-                  onClick={() => autofill(account.username, account.password, account.site)}
-                  style={styles.primaryButton}
-                  title="Autofill"
-                >
-                  <svg style={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  <span style={styles.buttonLabel}>autofill</span>
-                </button>
-
-                <button
-                  onClick={() => handleCopyPassword(account.password, account.site)}
-                  style={styles.actionButton}
-                  title="Copy Password"
-                >
-                  <svg style={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                  </svg>
-                  <span style={styles.buttonLabel}>password</span>
-                </button>
+                <button onClick={() => handleCopy(account.username, "User")} style={styles.actionButton}>User</button>
+                <button onClick={() => autofill(account.username, account.password, account.site)} style={styles.primaryButton}>Auto-Fill</button>
+                <button onClick={() => handleCopy(account.password, "Pass")} style={styles.actionButton}>Pass</button>
               </div>
             </div>
           ))}
         </div>
       </div>
-
-      {toastMessage && <Toast message={toastMessage} type={toastType} />}
+      
+      {toast.msg && <Toast message={toast.msg} type={toast.type} />}
     </div>
   );
 }
 
-const keyframes = `
-  @keyframes pulse {
-    0%, 100% { opacity: 0.15; }
-    50% { opacity: 0.25; }
-  }
-  
-  @keyframes slideUp {
-    from {
-      transform: translateY(10px);
-      opacity: 0;
-    }
-    to {
-      transform: translateY(0);
-      opacity: 1;
-    }
-  }
-`;
-
+// ... (KEEP YOUR STYLES EXACTLY AS BEFORE) ...
 const styles = {
   container: {
     width: '100%',
     height: '100%',
     backgroundColor: '#0f172a',
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
     padding: '16px',
     position: 'relative',
     overflow: 'hidden',
     boxSizing: 'border-box',
     fontFamily: '"Ubuntu","Segoe UI", Roboto, sans-serif'
   },
-  bgEffects: {
-    position: 'absolute',
-    inset: 0,
-    pointerEvents: 'none'
-  },
+  bgEffects: { position: 'absolute', inset: 0, pointerEvents: 'none' },
   colorBlur: {
-    position: 'absolute',
-    top: '20%',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    width: '300px',
-    height: '300px',
-    backgroundColor: '#10b981',
-    borderRadius: '50%',
-    filter: 'blur(80px)',
-    opacity: 0.15,
-    animation: 'pulse 4s infinite ease-in-out'
+    position: 'absolute', top: '20%', left: '50%', transform: 'translateX(-50%)',
+    width: '300px', height: '300px', backgroundColor: '#10b981', borderRadius: '50%',
+    filter: 'blur(80px)', opacity: 0.15, animation: 'pulse 4s infinite ease-in-out'
   },
   content: {
-    position: 'relative',
-    zIndex: 10,
-    width: '100%',
-    maxWidth: '400px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '16px',
-    maxHeight: '100%',
-    overflow: 'hidden'
+    position: 'relative', zIndex: 10, width: '100%', maxWidth: '400px',
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    gap: '16px', maxHeight: '100%', overflow: 'hidden'
   },
-  title: {
-    fontSize: '32px',
-    fontWeight: '700',
-    margin: 0,
-    color: '#e2e8f0',
-    letterSpacing: '-0.02em'
-  },
-  status: {
-    color: '#64748b',
-    fontSize: '15px',
-    margin: '-8px 0 8px 0',
-    textAlign: 'center'
-  },
-  searchWrapper: {
-    position: 'relative',
-    width: '100%',
-    maxWidth: '280px'
-  },
+  title: { fontSize: '32px', fontWeight: '700', margin: 0, color: '#e2e8f0' },
+  status: { color: '#64748b', fontSize: '15px', margin: '-8px 0 8px 0', textAlign: 'center' },
+  searchWrapper: { position: 'relative', width: '100%', maxWidth: '280px' },
   searchInput: {
-    width: '100%',
-    padding: '12px 36px 12px 16px',
-    backgroundColor: '#1e293b',
-    borderRadius: '16px',
-    color: '#e2e8f0',
-    border: '1px solid #334155',
-    outline: 'none',
-    fontSize: '14px',
-    boxSizing: 'border-box',
-    transition: 'all 0.2s ease',
+    width: '100%', padding: '12px 36px 12px 16px', backgroundColor: '#1e293b',
+    borderRadius: '16px', color: '#e2e8f0', border: '1px solid #334155', outline: 'none',
     textAlign: 'center'
   },
   clearButton: {
-    position: 'absolute',
-    right: '12px',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    background: 'none',
-    border: 'none',
-    color: '#64748b',
-    fontSize: '20px',
-    cursor: 'pointer',
-    padding: '0',
-    width: '24px',
-    height: '24px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    lineHeight: 1
+    position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+    background: 'none', border: 'none', color: '#64748b', fontSize: '20px', cursor: 'pointer'
   },
   vaultList: {
-    width: '100%',
-    maxWidth: '320px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px',
-    overflowY: 'auto',
-    maxHeight: '400px',
-    paddingRight: '4px'
-  },
-  emptyMessage: {
-    color: '#64748b',
-    fontSize: '14px',
-    textAlign: 'center',
-    margin: '20px 0'
+    width: '100%', maxWidth: '320px', display: 'flex', flexDirection: 'column',
+    gap: '12px', overflowY: 'auto', maxHeight: '400px', paddingRight: '4px'
   },
   vaultItem: {
-    backgroundColor: '#1e293b',
-    borderRadius: '12px',
-    border: '1px solid #334155',
-    padding: '14px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px',
-    animation: 'slideUp 0.3s ease-out',
-    transition: 'all 0.2s ease'
+    backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155',
+    padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px',
+    animation: 'slideUp 0.3s ease-out'
   },
-  itemTop: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  siteInfo: {
-    flex: 1,
-    minWidth: 0
-  },
-  siteName: {
-    color: '#e2e8f0',
-    fontSize: '15px',
-    fontWeight: '600',
-    margin: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap'
-  },
-  username: {
-    color: '#64748b',
-    fontSize: '13px',
-    margin: '4px 0 0 0',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap'
-  },
-  actionButtons: {
-    display: 'flex',
-    gap: '6px',
-    width: '100%'
-  },
+  itemTop: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  siteInfo: { flex: 1, minWidth: 0 },
+  siteName: { color: '#e2e8f0', fontSize: '15px', fontWeight: '600', margin: 0 },
+  username: { color: '#64748b', fontSize: '13px', margin: '4px 0 0 0' },
+  actionButtons: { display: 'flex', gap: '6px', width: '100%' },
   actionButton: {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '6px',
-    padding: '10px 8px',
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
-    border: '1px solid #334155',
-    borderRadius: '10px',
-    color: '#64748b',
-    fontSize: '12px',
-    fontWeight: '500',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease'
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '8px', backgroundColor: 'rgba(15, 23, 42, 0.5)', border: '1px solid #334155',
+    borderRadius: '10px', color: '#64748b', fontSize: '12px', cursor: 'pointer'
   },
   primaryButton: {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '6px',
-    padding: '10px 8px',
-    background: '#10b981',
-    border: 'none',
-    borderRadius: '10px',
-    color: '#ffffff',
-    fontSize: '12px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '8px', background: '#10b981', border: 'none', borderRadius: '10px',
+    color: '#ffffff', fontSize: '12px', fontWeight: '600', cursor: 'pointer'
   },
-  actionIcon: {
-    width: '14px',
-    height: '14px',
-    flexShrink: 0
+  // PENDING CARD STYLES
+  pendingCard: {
+    width: '100%', maxWidth: '320px', backgroundColor: '#1e293b', borderRadius: '12px',
+    padding: '12px', border: '1px solid #3b82f6', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.2)',
+    marginBottom: '8px', animation: 'slideIn 0.3s ease-out'
   },
-  buttonLabel: {
-    whiteSpace: 'nowrap'
+  pendingHeader: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' },
+  pendingIcon: { fontSize: '20px' },
+  pendingTitle: { color: '#3b82f6', fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', margin: 0 },
+  pendingSite: { color: '#ffffff', fontSize: '14px', fontWeight: '600', margin: 0 },
+  pendingActions: { display: 'flex', gap: '8px' },
+  saveButton: {
+    flex: 1, background: '#3b82f6', color: 'white', border: 'none', padding: '8px',
+    borderRadius: '6px', fontWeight: '600', cursor: 'pointer', fontSize: '12px'
+  },
+  discardButton: {
+    flex: 1, background: 'transparent', color: '#94a3b8', border: '1px solid #475569',
+    padding: '8px', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', fontSize: '12px'
   }
 };
+
+const keyframes = `
+  @keyframes pulse { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.25; } }
+  @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+`;
