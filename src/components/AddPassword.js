@@ -13,21 +13,26 @@ export default function AddPassword({ vault, masterPassword, onUpdate }) {
   const [saving, setSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState("error"); // Add toast type state
+  const [status, setStatus] = useState("Fill in the details");
+  
   useEffect(() => {
     getCurrentDomain().then(setSite);
   }, [])
   
-  const showToast = (msg) => {
+  const showToast = (msg, type = "error") => { // Accept type parameter
     setToastMessage(msg);
+    setToastType(type);
     setTimeout(() => setToastMessage(""), 3000);
   };
 
   const save = async () => {
     if (!site.trim() || !password.trim()) {
-      showToast('Website and Password are required.');
+      showToast('Website and Password are required.', 'warning');
       return;
     }
     setSaving(true);
+    setStatus("Encrypting...");
     try {
       const updated = {
         ...vault,
@@ -35,13 +40,22 @@ export default function AddPassword({ vault, masterPassword, onUpdate }) {
       };
       const encrypted = await encryptVault(updated, masterPassword);
       await saveVault(encrypted);
+      setStatus("Saving to blockchain...");
       await writeVaultHash(encrypted);
       onUpdate(updated);
-      showToast('Password saved successfully!');
-      setTimeout(() => setOpen(false), 1000);
+      setStatus("All set! ✨");
+      showToast('Password saved successfully!', 'success');
+      setTimeout(() => {
+        setOpen(false);
+        setSite("");
+        setUsername("");
+        setPassword("");
+        setStatus("Fill in the details");
+      }, 1000);
     } catch (err) {
       console.error(err);
-      showToast('Failed to save. Please try again.');
+      showToast('Failed to save. Please try again.', 'error');
+      setStatus("Fill in the details");
     } finally {
       setSaving(false);
     }
@@ -63,122 +77,90 @@ export default function AddPassword({ vault, masterPassword, onUpdate }) {
       
       {open && (
         <div style={styles.container}>
-          {/* Animated background effects */}
           <div style={styles.bgEffects}>
-            <div style={styles.pinkBlur}></div>
-            <div style={styles.blueBlur}></div>
+            <div style={styles.colorBlur}></div>
           </div>
 
-          {/* Main content */}
           <div style={styles.content}>
-            {/* Header */}
-            <div style={styles.header}>
-              <button onClick={() => setOpen(false)} style={styles.backButton}>
-                <svg style={styles.backIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
+            <h1 style={styles.title}>Add Password</h1>
+            <p style={styles.status}>{status}</p>
+
+            <div style={styles.inputGroup}>
+              <input
+                placeholder="website (e.g. github.com)"
+                style={styles.input}
+                value={site}
+                onChange={(e) => setSite(e.target.value)}
+                disabled={saving}
+              />
+            </div>
+
+            <div style={styles.inputGroup}>
+              <input
+                placeholder="username (optional)"
+                style={styles.input}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={saving}
+              />
+            </div>
+
+            <div style={styles.inputWrapper}>
+              <input
+                placeholder="password"
+                type={showPassword ? "text" : "password"}
+                style={styles.input}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && !saving && site.trim() && password.trim() && save()}
+                disabled={saving}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={styles.eyeButton}
+              >
+                {showPassword ? '☁️' : '✨'}
               </button>
-              <h2 style={styles.title}>ADD PASSWORD</h2>
-              <div style={styles.headerSpacer}></div>
             </div>
 
-            {/* Form */}
-            <div style={styles.form}>
-              {/* Website */}
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>
-                  <svg style={styles.labelIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                  </svg>
-                  Website
-                </label>
-                <input
-                  placeholder="e.g. github.com"
-                  style={styles.input}
-                  value={site}
-                  onChange={(e) => setSite(e.target.value)}
-                />
-              </div>
-
-              {/* Username */}
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>
-                  <svg style={styles.labelIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  Username
-                </label>
-                <input
-                  placeholder="e.g. user@email.com"
-                  style={styles.input}
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
-              </div>
-
-              {/* Password */}
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>
-                  <svg style={styles.labelIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                  Password
-                </label>
-                <div style={styles.passwordWrapper}>
-                  <input
-                    placeholder="Enter password"
-                    type={showPassword ? "text" : "password"}
-                    style={styles.passwordInput}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    style={styles.eyeButton}
-                  >
-                    {showPassword ? '👁️' : '👁️‍🗨️'}
-                  </button>
-                </div>
-              </div>
+            <div style={styles.strengthBar}>
+              <div style={{
+                ...styles.strengthFill,
+                width: `${Math.min((password.length / 12) * 100, 100)}%`,
+                background: password.length >= 12 ? '#10b981' : '#334155'
+              }}></div>
             </div>
 
-            {/* Save button */}
             <button
               onClick={save}
               disabled={saving || !site.trim() || !password.trim()}
               style={{
                 ...styles.button,
-                opacity: (saving || !site.trim() || !password.trim()) ? 0.5 : 1,
-                cursor: (saving || !site.trim() || !password.trim()) ? 'not-allowed' : 'pointer'
+                opacity: (saving || !site.trim() || !password.trim()) ? 0.6 : 1,
+                cursor: (saving || !site.trim() || !password.trim()) ? 'default' : 'pointer'
               }}
             >
-              <div style={styles.buttonGlow}></div>
-              <div style={styles.buttonContent}>
-                {saving ? (
-                  <div style={styles.loadingContainer}>
-                    <div style={styles.spinner}></div>
-                    <span>Saving...</span>
-                  </div>
-                ) : (
-                  <span>Save Password</span>
-                )}
-              </div>
+              {saving ? "please wait..." : "save password"}
             </button>
 
-            {/* Info text */}
-            <div style={styles.infoBox}>
-              <svg style={styles.infoIcon} fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-              <p style={styles.infoText}>
-                Your password will be encrypted before being stored on the blockchain.
-              </p>
-            </div>
+            {!saving && (
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  setSite("");
+                  setUsername("");
+                  setPassword("");
+                  setStatus("Fill in the details");
+                }}
+                style={styles.toggleButton}
+              >
+                cancel
+              </button>
+            )}
           </div>
 
-          {/* Toast notification */}
-          {toastMessage && <Toast message={toastMessage} />}
+          {toastMessage && <Toast message={toastMessage} type={toastType} />}
         </div>
       )}
     </>
@@ -186,14 +168,16 @@ export default function AddPassword({ vault, masterPassword, onUpdate }) {
 }
 
 const keyframes = `
-  @keyframes pulse {
-    0%, 100% { opacity: 0.6; }
-    50% { opacity: 1; }
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
   }
-  
   @keyframes spin {
-    from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.15; }
+    50% { opacity: 0.25; }
   }
 `;
 
@@ -204,213 +188,121 @@ const styles = {
   },
   container: {
     width: '100%',
-    minHeight: '400px',
-    backgroundColor: '#000000',
+    height: '100%',
+    backgroundColor: '#0f172a',
     display: 'flex',
-    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '16px',
     position: 'relative',
     overflow: 'hidden',
     boxSizing: 'border-box',
-    borderRadius: '8px'
+    fontFamily: '"Ubuntu","Segoe UI", Roboto, sans-serif'
   },
   bgEffects: {
     position: 'absolute',
     inset: 0,
-    overflow: 'hidden',
     pointerEvents: 'none'
   },
-  pinkBlur: {
+  colorBlur: {
     position: 'absolute',
-    top: '10%',
-    left: '20%',
-    width: '150px',
-    height: '150px',
-    backgroundColor: 'rgba(219, 39, 119, 0.3)',
+    top: '20%',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    width: '300px',
+    height: '300px',
+    backgroundColor: '#10b981',
     borderRadius: '50%',
-    filter: 'blur(60px)',
-    animation: 'pulse 3s infinite'
-  },
-  blueBlur: {
-    position: 'absolute',
-    bottom: '10%',
-    right: '20%',
-    width: '150px',
-    height: '150px',
-    backgroundColor: 'rgba(59, 130, 246, 0.3)',
-    borderRadius: '50%',
-    filter: 'blur(60px)',
-    animation: 'pulse 3s infinite 1.5s'
+    filter: 'blur(80px)',
+    opacity: 0.15,
+    animation: 'pulse 4s infinite ease-in-out'
   },
   content: {
     position: 'relative',
     zIndex: 10,
-    height: '100%',
+    width: '100%',
     display: 'flex',
     flexDirection: 'column',
-    padding: '16px'
-  },
-  header: {
-    display: 'flex',
     alignItems: 'center',
-    marginBottom: '20px',
-    paddingBottom: '12px',
-    borderBottom: '1px solid rgba(236, 72, 153, 0.2)'
-  },
-  backButton: {
-    background: 'none',
-    border: 'none',
-    color: '#9ca3af',
-    cursor: 'pointer',
-    padding: '4px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'color 0.3s'
-  },
-  backIcon: {
-    width: '24px',
-    height: '24px'
+    gap: '16px'
   },
   title: {
-    flex: 1,
-    fontSize: '18px',
-    fontWeight: 'bold',
-    background: 'linear-gradient(to right, #ec4899, #a855f7, #3b82f6)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
-    backgroundClip: 'text',
-    textAlign: 'center',
-    margin: 0
+    fontSize: '32px',
+    fontWeight: '700',
+    margin: 0,
+    color: '#e2e8f0',
+    letterSpacing: '-0.02em'
   },
-  headerSpacer: {
-    width: '32px'
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px',
-    marginBottom: '16px'
+  status: {
+    color: '#64748b',
+    fontSize: '15px',
+    margin: '-8px 0 8px 0',
+    textAlign: 'center'
   },
   inputGroup: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px'
+    width: '100%',
+    maxWidth: '280px'
   },
-  label: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    fontSize: '11px',
-    color: '#9ca3af',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-    fontWeight: '600'
-  },
-  labelIcon: {
-    width: '14px',
-    height: '14px',
-    color: '#ec4899'
+  inputWrapper: {
+    position: 'relative',
+    width: '100%',
+    maxWidth: '280px'
   },
   input: {
     width: '100%',
-    padding: '10px 12px',
-    backgroundColor: 'rgba(31, 41, 55, 0.8)',
-    borderRadius: '6px',
-    color: 'white',
-    border: '1px solid #374151',
+    padding: '12px 16px',
+    backgroundColor: '#1e293b',
+    borderRadius: '16px',
+    color: '#e2e8f0',
+    border: '1px solid #334155',
     outline: 'none',
     fontSize: '14px',
     boxSizing: 'border-box',
-    transition: 'border-color 0.3s'
-  },
-  passwordWrapper: {
-    position: 'relative'
-  },
-  passwordInput: {
-    width: '100%',
-    padding: '10px 36px 10px 12px',
-    backgroundColor: 'rgba(31, 41, 55, 0.8)',
-    borderRadius: '6px',
-    color: 'white',
-    border: '1px solid #374151',
-    outline: 'none',
-    fontSize: '14px',
-    boxSizing: 'border-box',
-    transition: 'border-color 0.3s'
+    transition: 'all 0.2s ease',
+    textAlign: 'center'
   },
   eyeButton: {
     position: 'absolute',
-    right: '8px',
+    right: '12px',
     top: '50%',
     transform: 'translateY(-50%)',
     background: 'none',
     border: 'none',
     cursor: 'pointer',
-    fontSize: '16px',
-    padding: '4px'
+    fontSize: '14px'
+  },
+  strengthBar: {
+    height: '4px',
+    width: '100%',
+    maxWidth: '200px',
+    backgroundColor: '#1e293b',
+    borderRadius: '10px',
+    overflow: 'hidden'
+  },
+  strengthFill: {
+    height: '100%',
+    transition: 'all 0.4s ease'
   },
   button: {
     width: '100%',
-    position: 'relative',
+    maxWidth: '280px',
+    padding: '14px',
+    background: '#10b981',
+    borderRadius: '16px',
     border: 'none',
-    background: 'transparent',
-    padding: 0,
-    marginTop: 'auto',
-    marginBottom: '12px',
-    transition: 'all 0.3s'
+    color: '#ffffff',
+    fontSize: '15px',
+    fontWeight: '600',
+    boxShadow: '0 4px 16px rgba(16, 185, 129, 0.3)',
+    transition: 'all 0.3s ease'
   },
-  buttonGlow: {
-    position: 'absolute',
-    inset: 0,
-    background: 'linear-gradient(to right, #db2777, #2563eb)',
-    borderRadius: '6px',
-    filter: 'blur(6px)',
-    opacity: 0.6
-  },
-  buttonContent: {
-    position: 'relative',
-    background: 'linear-gradient(to right, #db2777, #2563eb)',
-    padding: '12px',
-    borderRadius: '6px',
-    fontWeight: 'bold',
-    color: 'white',
+  toggleButton: {
     fontSize: '14px',
-    textTransform: 'uppercase'
-  },
-  loadingContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px'
-  },
-  spinner: {
-    width: '16px',
-    height: '16px',
-    border: '2px solid rgba(255, 255, 255, 0.3)',
-    borderTop: '2px solid white',
-    borderRadius: '50%',
-    animation: 'spin 1s linear infinite'
-  },
-  infoBox: {
-    display: 'flex',
-    gap: '8px',
-    padding: '10px',
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
-    borderRadius: '6px',
-    border: '1px solid rgba(59, 130, 246, 0.3)',
-    alignItems: 'flex-start'
-  },
-  infoIcon: {
-    width: '16px',
-    height: '16px',
-    color: '#3b82f6',
-    flexShrink: 0,
-    marginTop: '2px'
-  },
-  infoText: {
-    fontSize: '11px',
-    color: '#9ca3af',
-    lineHeight: '1.5',
-    margin: 0
+    color: '#64748b',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    marginTop: '8px',
+    fontWeight: '500'
   }
 };
