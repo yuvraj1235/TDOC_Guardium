@@ -12,9 +12,11 @@ export default function Login({ onUnlock }) {
   const [showPassword, setShowPassword] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState("error"); // Add toast type state
 
-  const showToast = (msg) => {
+  const showToast = (msg, type = "error") => { // Accept type parameter
     setToastMessage(msg);
+    setToastType(type);
     setTimeout(() => setToastMessage(""), 3000);
   };
 
@@ -23,10 +25,10 @@ export default function Login({ onUnlock }) {
       try {
         const vault = await loadVault();
         setVaultExists(!!vault);
-        setStatus(vault ? "Unlock your Vault" : "Create Master Password");
+        setStatus(vault ? "Welcome back!" : "Create your first vault");
       } catch (err) {
         console.error(err);
-        setStatus("⚠ Error loading vault");
+        setStatus("Something went wrong");
       } finally {
         setLoading(false);
       }
@@ -36,26 +38,22 @@ export default function Login({ onUnlock }) {
 
   const handleCreateVault = async () => {
     if (!password || password.length < 8) {
-      showToast("Master password must be at least 8 characters");
+      showToast("Password needs 8+ characters", "warning");
       return;
     }
-    
     setProcessing(true);
-    setStatus("Creating vault...");
-    
+    setStatus("Setting things up...");
     try {
       const emptyVault = { accounts: [] };
       const encrypted = await encryptVault(emptyVault, password);
       await saveVault(encrypted);
-      
-      setStatus("Registering on blockchain...");
+      setStatus("Saving to blockchain...");
       await writeVaultHash(encrypted);
-      
-      setStatus("Vault created ✓");
+      setStatus("All set! ✨");
+      showToast("Vault created successfully!", "success");
       setTimeout(() => onUnlock(emptyVault, password), 1000);
     } catch (err) {
-      console.error(err);
-      showToast("Failed to create vault: " + err.message);
+      showToast("Creation failed: " + err.message, "error");
       setStatus("Create Master Password");
     } finally {
       setProcessing(false);
@@ -64,37 +62,30 @@ export default function Login({ onUnlock }) {
 
   const handleUnlock = async () => {
     if (!password || password.length < 8) {
-      showToast("Master password must be at least 8 characters");
+      showToast("Password needs 8+ characters", "warning");
       return;
     }
-    
     setProcessing(true);
-    setStatus("Verifying vault integrity...");
-    
+    setStatus("Verifying...");
     try {
       const encryptedVault = await loadVault();
       if (!encryptedVault) {
-        showToast("No vault found");
+        showToast("No vault found", "error");
         setProcessing(false);
         return;
       }
-
       const verified = await verifyVault(encryptedVault);
       if (!verified) {
-        showToast("Vault verification failed - blockchain integrity check failed");
+        showToast("Integrity check failed", "error");
         setProcessing(false);
-        setStatus("Unlock your Vault");
         return;
       }
-
-      setStatus("Decrypting vault...");
-      const decrypted = await decryptVault(encryptedVault, password);
-      
       setStatus("Unlocking...");
+      const decrypted = await decryptVault(encryptedVault, password);
+      showToast("Vault unlocked!", "success");
       setTimeout(() => onUnlock(decrypted, password), 800);
     } catch (err) {
-      console.error(err);
-      showToast("Wrong master password");
+      showToast("Wrong password", "error");
       setPassword("");
       setStatus("Unlock your Vault");
     } finally {
@@ -114,14 +105,7 @@ export default function Login({ onUnlock }) {
     return (
       <div style={styles.container}>
         <style>{keyframes}</style>
-        <div style={styles.bgEffects}>
-          <div style={styles.pinkBlur}></div>
-          <div style={styles.blueBlur}></div>
-        </div>
-        <div style={styles.content}>
-          <div style={styles.spinner}></div>
-          <p style={styles.status}>Loading...</p>
-        </div>
+        <div style={styles.spinner}></div>
       </div>
     );
   }
@@ -130,28 +114,18 @@ export default function Login({ onUnlock }) {
     <div style={styles.container}>
       <style>{keyframes}</style>
       
-      {/* Animated background effects */}
       <div style={styles.bgEffects}>
-        <div style={styles.pinkBlur}></div>
-        <div style={styles.blueBlur}></div>
+        <div style={styles.colorBlur}></div>
       </div>
 
-      {/* Main content */}
       <div style={styles.content}>
-        {/* Title */}
-        <h1 style={styles.title}>CREATE VAULT</h1>
-        
-        {/* Status */}
+        <h1 style={styles.title}>{vaultExists ? "Welcome back!" : "New Vault"}</h1>
         <p style={styles.status}>{status}</p>
         
-        {/* Password label */}
-        <label style={styles.label}>Master Password</label>
-        
-        {/* Password input */}
         <div style={styles.inputWrapper}>
           <input
             type={showPassword ? "text" : "password"}
-            placeholder="Enter at least 8 characters..."
+            placeholder="master password"
             style={styles.input}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -163,45 +137,30 @@ export default function Login({ onUnlock }) {
             onClick={() => setShowPassword(!showPassword)}
             style={styles.eyeButton}
           >
-            {showPassword ? '👁️' : '👁️‍🗨️'}
+            {showPassword ? '☁️' : '✨'}
           </button>
         </div>
 
-        {/* Password strength */}
         <div style={styles.strengthBar}>
           <div style={{
             ...styles.strengthFill,
-            background: password.length >= 8 ? 'linear-gradient(to right, #ec4899, #a855f7)' : '#374151'
+            width: `${Math.min((password.length / 8) * 100, 100)}%`,
+            background: password.length >= 8 ? '#10b981' : '#334155'
           }}></div>
-          <span style={styles.strengthText}>{password.length}/8 min</span>
         </div>
 
-        {/* Action button */}
         <button
           onClick={handleAuth}
           disabled={processing || password.length < 8}
           style={{
             ...styles.button,
-            opacity: (processing || password.length < 8) ? 0.5 : 1,
-            cursor: (processing || password.length < 8) ? 'not-allowed' : 'pointer'
+            opacity: (processing || password.length < 8) ? 0.6 : 1,
+            cursor: (processing || password.length < 8) ? 'default' : 'pointer'
           }}
         >
-          <div style={styles.buttonGlow}></div>
-          <div style={styles.buttonContent}>
-            {processing ? (
-              <div style={styles.loadingContainer}>
-                <div style={styles.spinner}></div>
-                <span>Processing...</span>
-              </div>
-            ) : vaultExists ? (
-              "Unlock Vault"
-            ) : (
-              "Create & Register Vault"
-            )}
-          </div>
+          {processing ? "please wait..." : vaultExists ? "unlock" : "create"}
         </button>
 
-        {/* Toggle mode */}
         {!processing && (
           <button
             onClick={() => {
@@ -211,30 +170,27 @@ export default function Login({ onUnlock }) {
             }}
             style={styles.toggleButton}
           >
-            {vaultExists ? (
-              <span style={styles.toggleText}>New user? <span style={{color: '#3b82f6'}}>Create New Vault</span></span>
-            ) : (
-              <span style={styles.toggleText}>Already have a vault? <span style={{color: '#ec4899'}}>Unlock instead</span></span>
-            )}
+            {vaultExists ? "switch to create" : "already have one?"}
           </button>
         )}
       </div>
 
-      {/* Toast notification */}
-      {toastMessage && <Toast message={toastMessage} />}
+      {toastMessage && <Toast message={toastMessage} type={toastType} />}
     </div>
   );
 }
 
 const keyframes = `
-  @keyframes pulse {
-    0%, 100% { opacity: 0.6; }
-    50% { opacity: 1; }
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
   }
-  
   @keyframes spin {
-    from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.15; }
+    50% { opacity: 0.25; }
   }
 `;
 
@@ -242,173 +198,124 @@ const styles = {
   container: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#000000',
+    backgroundColor: '#0f172a',
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     padding: '16px',
     position: 'relative',
     overflow: 'hidden',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    fontFamily: '"Ubuntu","Segoe UI", Roboto, sans-serif'
   },
   bgEffects: {
     position: 'absolute',
     inset: 0,
-    overflow: 'hidden',
     pointerEvents: 'none'
   },
-  pinkBlur: {
+  colorBlur: {
     position: 'absolute',
-    top: '10%',
-    left: '20%',
-    width: '150px',
-    height: '150px',
-    backgroundColor: 'rgba(219, 39, 119, 0.3)',
+    top: '20%',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    width: '300px',
+    height: '300px',
+    backgroundColor: '#10b981',
     borderRadius: '50%',
-    filter: 'blur(60px)',
-    animation: 'pulse 3s infinite'
-  },
-  blueBlur: {
-    position: 'absolute',
-    bottom: '10%',
-    right: '20%',
-    width: '150px',
-    height: '150px',
-    backgroundColor: 'rgba(59, 130, 246, 0.3)',
-    borderRadius: '50%',
-    filter: 'blur(60px)',
-    animation: 'pulse 3s infinite 1.5s'
+    filter: 'blur(80px)',
+    opacity: 0.15,
+    animation: 'pulse 4s infinite ease-in-out'
   },
   content: {
     position: 'relative',
     zIndex: 10,
     width: '100%',
-    maxWidth: '100%',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '12px'
+    gap: '16px'
   },
   title: {
     fontSize: '32px',
-    fontWeight: 'bold',
-    margin: '0 0 8px 0',
-    background: 'linear-gradient(to right, #ec4899, #a855f7, #3b82f6)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
-    backgroundClip: 'text',
-    letterSpacing: '0.1em'
+    fontWeight: '700',
+    margin: 0,
+    color: '#e2e8f0',
+    letterSpacing: '-0.02em'
   },
   status: {
-    color: '#9ca3af',
-    fontSize: '12px',
-    margin: '0 0 8px 0',
+    color: '#64748b',
+    fontSize: '15px',
+    margin: '-8px 0 8px 0',
     textAlign: 'center'
-  },
-  label: {
-    display: 'block',
-    fontSize: '11px',
-    color: '#9ca3af',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-    marginBottom: '4px',
-    width: '100%'
   },
   inputWrapper: {
     position: 'relative',
-    width: '100%'
+    width: '100%',
+    maxWidth: '280px'
   },
   input: {
     width: '100%',
-    padding: '10px 36px 10px 12px',
-    backgroundColor: 'rgba(31, 41, 55, 0.8)',
-    borderRadius: '6px',
-    color: 'white',
-    border: '1px solid #374151',
+    padding: '12px 16px',
+    backgroundColor: '#1e293b',
+    borderRadius: '16px',
+    color: '#e2e8f0',
+    border: '1px solid #334155',
     outline: 'none',
     fontSize: '14px',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    transition: 'all 0.2s ease',
+    textAlign: 'center'
   },
   eyeButton: {
     position: 'absolute',
-    right: '8px',
+    right: '12px',
     top: '50%',
     transform: 'translateY(-50%)',
     background: 'none',
     border: 'none',
     cursor: 'pointer',
-    fontSize: '16px',
-    padding: '4px'
+    fontSize: '14px'
   },
   strengthBar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    fontSize: '10px',
-    color: '#6b7280',
+    height: '4px',
     width: '100%',
-    marginBottom: '4px'
+    maxWidth: '200px',
+    backgroundColor: '#1e293b',
+    borderRadius: '10px',
+    overflow: 'hidden'
   },
   strengthFill: {
-    height: '3px',
-    flex: 1,
-    borderRadius: '2px',
-    transition: 'background 0.3s'
-  },
-  strengthText: {
-    whiteSpace: 'nowrap'
+    height: '100%',
+    transition: 'all 0.4s ease'
   },
   button: {
     width: '100%',
-    position: 'relative',
+    maxWidth: '280px',
+    padding: '14px',
+    background: '#10b981',
+    borderRadius: '16px',
     border: 'none',
-    background: 'transparent',
-    padding: 0,
-    transition: 'all 0.3s'
-  },
-  buttonGlow: {
-    position: 'absolute',
-    inset: 0,
-    background: 'linear-gradient(to right, #db2777, #2563eb)',
-    borderRadius: '6px',
-    filter: 'blur(6px)',
-    opacity: 0.6
-  },
-  buttonContent: {
-    position: 'relative',
-    background: 'linear-gradient(to right, #db2777, #2563eb)',
-    padding: '12px',
-    borderRadius: '6px',
-    fontWeight: 'bold',
-    color: 'white',
-    fontSize: '14px',
-    textTransform: 'uppercase'
-  },
-  loadingContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px'
-  },
-  spinner: {
-    width: '16px',
-    height: '16px',
-    border: '2px solid rgba(255, 255, 255, 0.3)',
-    borderTop: '2px solid white',
-    borderRadius: '50%',
-    animation: 'spin 1s linear infinite'
+    color: '#ffffff',
+    fontSize: '15px',
+    fontWeight: '600',
+    boxShadow: '0 4px 16px rgba(16, 185, 129, 0.3)',
+    transition: 'all 0.3s ease'
   },
   toggleButton: {
-    fontSize: '11px',
-    color: '#9ca3af',
+    fontSize: '14px',
+    color: '#64748b',
     background: 'none',
     border: 'none',
     cursor: 'pointer',
-    padding: '4px',
-    marginTop: '4px'
+    marginTop: '8px',
+    fontWeight: '500'
   },
-  toggleText: {
-    display: 'block'
+  spinner: {
+    width: '24px',
+    height: '24px',
+    border: '3px solid #1e293b',
+    borderTop: '3px solid #10b981',
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite'
   }
 };

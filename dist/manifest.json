@@ -1,32 +1,33 @@
 {
-    "name": "Guardium",
-    "description" : "Password manager",
-    "version": "1.0",
-    "manifest_version": 3,
-    "action": {
-      "default_popup": "index.html",
-      "default_title": "Open Nft Prize Locker"
-    },
-    "icons": {
-      "16": "logo192.png",
-      "48": "logo192.png",
-      "128": "logo192.png"
-    },
-    "//background": {
-      "service_worker": "./static/js/background.js"
-    },
-    "//content_scripts": [
-      {
-        "matches": ["*://www.youtube.com/*"],
-        "js": ["./static/js/content.js"]
-      }
-    ],
-    "permissions": [
-      "activeTab",
-      "tabs", 
-      "webNavigation",
-      "storage"
-    ],
-    "optional_permissions": []
-  }
-  
+  "manifest_version": 3,
+  "name": "Guardium",
+  "description": "Password manager",
+  "version": "1.0",
+
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Open Guardium"
+  },
+
+  "icons": {
+    "16": "logo192.png",
+    "48": "logo192.png",
+    "128": "logo192.png"
+  },
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["contentScript.js"],
+      "all_frames": true,
+      "run_at": "document_end"
+    }
+  ],
+
+  "permissions": ["activeTab", "tabs", "storage","scripting"],
+  "host_permissions": ["<all_urls>"]
+}
